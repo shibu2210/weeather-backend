@@ -39,3 +39,28 @@ mvnw.cmd
 
 ### Logs ###
 *.log
+logs/
+
+### Environment Variables ###
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+application-local.properties
+application-dev.properties
+
+### OS Files ###
+.DS_Store
+Thumbs.db
+.AppleDouble
+.LSOverride
+
+### Deployment ###
+.vercel
+.netlify
+
+### Misc ###
+.cache
+.temp
+.tmp

@@ -38,6 +38,14 @@ public class AqiController {
         return ResponseEntity.ok(response);
     }
     
+    @GetMapping("/station")
+    public ResponseEntity<AqiDetailsResponse> getAqiByStationUid(
+            @RequestParam @NotNull(message = "Station UID is required") Integer uid) {
+        log.info("GET /api/aqi/station - uid: {}", uid);
+        AqiDetailsResponse response = aqicnService.getAqiByStationUid(uid);
+        return ResponseEntity.ok(response);
+    }
+    
     @GetMapping("/search")
     public ResponseEntity<AqicnSearchResponse> searchStations(
             @RequestParam @NotBlank(message = "Keyword is required") String keyword) {

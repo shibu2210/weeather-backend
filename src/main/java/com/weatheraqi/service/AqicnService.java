@@ -64,6 +64,28 @@ public class AqicnService {
         }
     }
     
+    @Cacheable(value = "aqiStation", key = "#stationUid")
+    public AqiDetailsResponse getAqiByStationUid(Integer stationUid) {
+        try {
+            String url = UriComponentsBuilder
+                    .fromHttpUrl(aqicnApiConfig.getBaseUrl() + "/feed/@" + stationUid + "/")
+                    .queryParam("token", aqicnApiConfig.getToken())
+                    .toUriString();
+            
+            log.info("Fetching AQI data for station UID: {}", stationUid);
+            AqicnResponse response = restTemplate.getForObject(url, AqicnResponse.class);
+            
+            if (response == null || !"ok".equals(response.getStatus())) {
+                throw new AqicnApiException("No AQI data received for station UID: " + stationUid);
+            }
+            
+            return convertToAqiDetails(response);
+        } catch (Exception e) {
+            log.error("Error fetching AQI for station UID {}: {}", stationUid, e.getMessage());
+            throw new AqicnApiException("Failed to fetch AQI data: " + e.getMessage());
+        }
+    }
+    
     @Cacheable(value = "aqiSearch", key = "#keyword")
     public AqicnSearchResponse searchAqiStations(String keyword) {
         try {
