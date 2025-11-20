@@ -5,6 +5,7 @@ import com.weatheraqi.dto.ForecastResponse;
 import com.weatheraqi.dto.LocationSearchResponse;
 import com.weatheraqi.service.WeatherService;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -43,6 +44,16 @@ public class WeatherController {
             @RequestParam @NotBlank(message = "Query is required") String query) {
         log.info("GET /api/weather/search - query: {}", query);
         LocationSearchResponse[] response = weatherService.searchLocation(query);
+        return ResponseEntity.ok(response);
+    }
+    
+    @GetMapping("/by-coordinates")
+    public ResponseEntity<CurrentWeatherResponse> getWeatherByCoordinates(
+            @RequestParam @NotNull(message = "Latitude is required") Double lat,
+            @RequestParam @NotNull(message = "Longitude is required") Double lon) {
+        log.info("GET /api/weather/by-coordinates - lat: {}, lon: {}", lat, lon);
+        String location = lat + "," + lon;
+        CurrentWeatherResponse response = weatherService.getCurrentWeather(location);
         return ResponseEntity.ok(response);
     }
     

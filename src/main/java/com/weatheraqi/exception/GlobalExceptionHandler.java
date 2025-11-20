@@ -30,6 +30,21 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
     }
     
+    @ExceptionHandler(AqicnApiException.class)
+    public ResponseEntity<ErrorResponse> handleAqicnApiException(
+            AqicnApiException ex, HttpServletRequest request) {
+        log.error("AQICN API Exception: {}", ex.getMessage());
+        
+        ErrorResponse error = new ErrorResponse(
+                HttpStatus.BAD_REQUEST.value(),
+                "AQI API Error",
+                ex.getMessage(),
+                request.getRequestURI()
+        );
+        
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+    }
+    
     @ExceptionHandler(HttpClientErrorException.class)
     public ResponseEntity<ErrorResponse> handleHttpClientError(
             HttpClientErrorException ex, HttpServletRequest request) {

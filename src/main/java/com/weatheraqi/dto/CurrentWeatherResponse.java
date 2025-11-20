@@ -76,6 +76,7 @@ public class CurrentWeatherResponse {
     
     @Data
     public static class AirQuality {
+        private Integer aqi;
         private Double co;
         private Double no2;
         private Double o3;

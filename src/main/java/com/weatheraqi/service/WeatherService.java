@@ -1,6 +1,7 @@
 package com.weatheraqi.service;
 
 import com.weatheraqi.config.WeatherApiConfig;
+import com.weatheraqi.dto.AqiDetailsResponse;
 import com.weatheraqi.dto.CurrentWeatherResponse;
 import com.weatheraqi.dto.ForecastResponse;
 import com.weatheraqi.dto.LocationSearchResponse;
@@ -19,6 +20,7 @@ public class WeatherService {
     
     private final RestTemplate restTemplate;
     private final WeatherApiConfig weatherApiConfig;
+    private final AqicnService aqicnService;
     
     @Cacheable(value = "currentWeather", key = "#location")
     public CurrentWeatherResponse getCurrentWeather(String location) {
@@ -27,7 +29,7 @@ public class WeatherService {
                     .fromHttpUrl(weatherApiConfig.getBaseUrl() + "/current.json")
                     .queryParam("key", weatherApiConfig.getApiKey())
                     .queryParam("q", location)
-                    .queryParam("aqi", "yes")
+                    .queryParam("aqi", "no")
                     .toUriString();
             
             log.info("Fetching current weather for location: {}", location);
@@ -37,11 +39,72 @@ public class WeatherService {
                 throw new WeatherApiException("No data received from Weather API");
             }
             
+            // Merge AQICN data
+            try {
+                mergeAqicnData(response);
+            } catch (Exception e) {
+                log.warn("Failed to fetch AQICN data, using WeatherAPI AQI: {}", e.getMessage());
+            }
+            
             return response;
         } catch (Exception e) {
             log.error("Error fetching current weather: {}", e.getMessage());
             throw new WeatherApiException("Failed to fetch weather data: " + e.getMessage());
         }
+    }
+    
+    private void mergeAqicnData(CurrentWeatherResponse weatherResponse) {
+        if (weatherResponse.getLocation() == null) {
+            return;
+        }
+        
+        try {
+            Double lat = weatherResponse.getLocation().getLat();
+            Double lon = weatherResponse.getLocation().getLon();
+            
+            if (lat != null && lon != null) {
+                log.info("Fetching AQICN data for coordinates: {}, {}", lat, lon);
+                AqiDetailsResponse aqiData = aqicnService.getAqiByCoordinates(lat, lon);
+                
+                // Replace WeatherAPI AQI with AQICN data
+                if (weatherResponse.getCurrent() != null && aqiData != null) {
+                    CurrentWeatherResponse.AirQuality airQuality = new CurrentWeatherResponse.AirQuality();
+                    
+                    // Set the actual AQI value from AQICN
+                    airQuality.setAqi(aqiData.getAqi());
+                    
+                    if (aqiData.getPollutants() != null) {
+                        airQuality.setPm2_5(aqiData.getPollutants().getPm25());
+                        airQuality.setPm10(aqiData.getPollutants().getPm10());
+                        airQuality.setCo(aqiData.getPollutants().getCo());
+                        airQuality.setNo2(aqiData.getPollutants().getNo2());
+                        airQuality.setSo2(aqiData.getPollutants().getSo2());
+                        airQuality.setO3(aqiData.getPollutants().getO3());
+                    }
+                    
+                    // Convert AQICN AQI to EPA index
+                    if (aqiData.getAqi() != null) {
+                        airQuality.setUsEpaIndex(convertToEpaIndex(aqiData.getAqi()));
+                    }
+                    
+                    weatherResponse.getCurrent().setAirQuality(airQuality);
+                    log.info("Successfully merged AQICN data - AQI: {}, Station: {}", aqiData.getAqi(), aqiData.getStationName());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not merge AQICN data: {}", e.getMessage());
+            throw e;
+        }
+    }
+    
+    private Integer convertToEpaIndex(Integer aqicnAqi) {
+        // AQICN uses similar scale to EPA, so direct mapping
+        if (aqicnAqi <= 50) return 1;      // Good
+        if (aqicnAqi <= 100) return 2;     // Moderate
+        if (aqicnAqi <= 150) return 3;     // Unhealthy for Sensitive
+        if (aqicnAqi <= 200) return 4;     // Unhealthy
+        if (aqicnAqi <= 300) return 5;     // Very Unhealthy
+        return 6;                           // Hazardous
     }
     
     @Cacheable(value = "forecast", key = "#location + '_' + #days")
@@ -59,7 +122,7 @@ public class WeatherService {
                     .queryParam("key", weatherApiConfig.getApiKey())
                     .queryParam("q", location)
                     .queryParam("days", days)
-                    .queryParam("aqi", "yes")
+                    .queryParam("aqi", "no")
                     .queryParam("alerts", "no")
                     .toUriString();
             
