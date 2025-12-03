@@ -186,14 +186,14 @@ public class OpenMeteoService {
     public PollenForecastResponse getPollenForecast(Double lat, Double lon) {
         try {
             // Note: Open-Meteo Air Quality API uses European pollen model
-            // Pollen data may not be available for all locations
+            // Pollen data is only available for European locations
             String url = UriComponentsBuilder
                     .fromHttpUrl("https://air-quality-api.open-meteo.com/v1/air-quality")
                     .queryParam("latitude", lat)
                     .queryParam("longitude", lon)
-                    .queryParam("hourly", "european_aqi,alder_pollen,birch_pollen,grass_pollen,mugwort_pollen,olive_pollen,ragweed_pollen")
+                    .queryParam("daily", "alder_pollen,birch_pollen,grass_pollen,mugwort_pollen,olive_pollen,ragweed_pollen")
                     .queryParam("timezone", "auto")
-                    .queryParam("forecast_hours", 24)
+                    .queryParam("forecast_days", 1)
                     .toUriString();
             
             log.info("Fetching pollen forecast from Open-Meteo: lat={}, lon={}", lat, lon);
@@ -201,37 +201,49 @@ public class OpenMeteoService {
             try {
                 PollenForecastResponse response = restTemplate.getForObject(url, PollenForecastResponse.class);
                 
-                if (response == null) {
-                    log.warn("No pollen data received, returning empty response");
-                    return createEmptyPollenResponse(lat, lon);
+                if (response == null || response.getDaily() == null) {
+                    log.warn("No pollen data received, returning unavailable response");
+                    return createUnavailablePollenResponse(lat, lon);
+                }
+                
+                // Check if all pollen values are null (non-European location)
+                if (isPollenDataAllNull(response.getDaily())) {
+                    log.info("Pollen data all null - location likely outside Europe");
+                    return createUnavailablePollenResponse(lat, lon);
                 }
                 
                 return response;
             } catch (Exception apiError) {
                 log.warn("Pollen data not available for this location: {}", apiError.getMessage());
-                return createEmptyPollenResponse(lat, lon);
+                return createUnavailablePollenResponse(lat, lon);
             }
         } catch (Exception e) {
             log.error("Error fetching pollen data: {}", e.getMessage());
-            return createEmptyPollenResponse(lat, lon);
+            return createUnavailablePollenResponse(lat, lon);
         }
     }
     
-    private PollenForecastResponse createEmptyPollenResponse(Double lat, Double lon) {
+    private boolean isPollenDataAllNull(PollenForecastResponse.Daily daily) {
+        // Check if all pollen values are null (indicates non-European location)
+        return isListAllNull(daily.getAlder_pollen()) &&
+               isListAllNull(daily.getBirch_pollen()) &&
+               isListAllNull(daily.getGrass_pollen()) &&
+               isListAllNull(daily.getMugwort_pollen()) &&
+               isListAllNull(daily.getOlive_pollen()) &&
+               isListAllNull(daily.getRagweed_pollen());
+    }
+    
+    private boolean isListAllNull(List<Double> list) {
+        if (list == null || list.isEmpty()) return true;
+        return list.stream().allMatch(v -> v == null);
+    }
+    
+    private PollenForecastResponse createUnavailablePollenResponse(Double lat, Double lon) {
+        // Return response with null daily to indicate data is unavailable
         PollenForecastResponse response = new PollenForecastResponse();
         response.setLatitude(lat);
         response.setLongitude(lon);
-        
-        PollenForecastResponse.Daily daily = new PollenForecastResponse.Daily();
-        daily.setTime(java.util.Collections.singletonList(java.time.LocalDate.now().toString()));
-        daily.setAlder_pollen(java.util.Collections.singletonList(0.0));
-        daily.setBirch_pollen(java.util.Collections.singletonList(0.0));
-        daily.setGrass_pollen(java.util.Collections.singletonList(0.0));
-        daily.setMugwort_pollen(java.util.Collections.singletonList(0.0));
-        daily.setOlive_pollen(java.util.Collections.singletonList(0.0));
-        daily.setRagweed_pollen(java.util.Collections.singletonList(0.0));
-        
-        response.setDaily(daily);
+        response.setDaily(null); // null indicates unavailable
         return response;
     }
 }
