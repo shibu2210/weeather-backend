@@ -101,8 +101,19 @@ public class HealthInsightsService {
         factors.add(createFactor("Pollen", pollenScore, "🌸"));
         factors.add(createFactor("Weather", weatherScore, "🌤️"));
         
-        // Calculate overall score (weighted average)
-        int overallScore = (aqiScore * 35 + uvScore * 25 + pollenScore * 20 + weatherScore * 20) / 100;
+        // Calculate overall score with dynamic weighting
+        // When AQI is poor (unhealthy), it should dominate the score
+        int overallScore;
+        if (aqiScore < 50) {
+            // Poor AQI: Give it 60% weight, others share 40%
+            overallScore = (aqiScore * 60 + uvScore * 15 + pollenScore * 13 + weatherScore * 12) / 100;
+        } else if (aqiScore < 70) {
+            // Moderate AQI: Give it 45% weight
+            overallScore = (aqiScore * 45 + uvScore * 20 + pollenScore * 18 + weatherScore * 17) / 100;
+        } else {
+            // Good AQI: Standard weighting
+            overallScore = (aqiScore * 35 + uvScore * 25 + pollenScore * 20 + weatherScore * 20) / 100;
+        }
         
         response.setScore(overallScore);
         response.setLevel(HealthScoreResponse.getScoreLevel(overallScore));
@@ -336,13 +347,13 @@ public class HealthInsightsService {
         rec.setActivity(activity);
         rec.setIcon(icon);
         
-        if (healthScore >= 80) {
+        if (healthScore >= 85) {
             rec.setSuitability("Excellent");
             rec.setReason("Perfect conditions");
-        } else if (healthScore >= 60) {
+        } else if (healthScore >= 70) {
             rec.setSuitability("Good");
             rec.setReason("Generally favorable");
-        } else if (healthScore >= 40) {
+        } else if (healthScore >= 50) {
             rec.setSuitability("Fair");
             rec.setReason("Some concerns present");
         } else {

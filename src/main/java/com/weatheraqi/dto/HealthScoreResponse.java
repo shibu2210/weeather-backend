@@ -22,18 +22,18 @@ public class HealthScoreResponse {
     }
     
     public static String getScoreLevel(Integer score) {
-        if (score >= 80) return "Excellent";
-        if (score >= 60) return "Good";
-        if (score >= 40) return "Fair";
-        if (score >= 20) return "Poor";
+        if (score >= 85) return "Excellent";
+        if (score >= 70) return "Good";
+        if (score >= 50) return "Fair";
+        if (score >= 30) return "Poor";
         return "Hazardous";
     }
     
     public static String getScoreColor(Integer score) {
-        if (score >= 80) return "#4CAF50";
-        if (score >= 60) return "#8BC34A";
-        if (score >= 40) return "#FFC107";
-        if (score >= 20) return "#FF9800";
+        if (score >= 85) return "#4CAF50";
+        if (score >= 70) return "#8BC34A";
+        if (score >= 50) return "#FFC107";
+        if (score >= 30) return "#FF9800";
         return "#F44336";
     }
 }
