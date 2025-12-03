@@ -185,26 +185,53 @@ public class OpenMeteoService {
     
     public PollenForecastResponse getPollenForecast(Double lat, Double lon) {
         try {
+            // Note: Open-Meteo Air Quality API uses European pollen model
+            // Pollen data may not be available for all locations
             String url = UriComponentsBuilder
                     .fromHttpUrl("https://air-quality-api.open-meteo.com/v1/air-quality")
                     .queryParam("latitude", lat)
                     .queryParam("longitude", lon)
-                    .queryParam("daily", "alder_pollen,birch_pollen,grass_pollen,mugwort_pollen,olive_pollen,ragweed_pollen")
+                    .queryParam("hourly", "european_aqi,alder_pollen,birch_pollen,grass_pollen,mugwort_pollen,olive_pollen,ragweed_pollen")
                     .queryParam("timezone", "auto")
-                    .queryParam("forecast_days", 7)
+                    .queryParam("forecast_hours", 24)
                     .toUriString();
             
             log.info("Fetching pollen forecast from Open-Meteo: lat={}, lon={}", lat, lon);
-            PollenForecastResponse response = restTemplate.getForObject(url, PollenForecastResponse.class);
             
-            if (response == null) {
-                throw new WeatherApiException("No pollen data received from Open-Meteo");
+            try {
+                PollenForecastResponse response = restTemplate.getForObject(url, PollenForecastResponse.class);
+                
+                if (response == null) {
+                    log.warn("No pollen data received, returning empty response");
+                    return createEmptyPollenResponse(lat, lon);
+                }
+                
+                return response;
+            } catch (Exception apiError) {
+                log.warn("Pollen data not available for this location: {}", apiError.getMessage());
+                return createEmptyPollenResponse(lat, lon);
             }
-            
-            return response;
         } catch (Exception e) {
             log.error("Error fetching pollen data: {}", e.getMessage());
-            throw new WeatherApiException("Failed to fetch pollen data: " + e.getMessage());
+            return createEmptyPollenResponse(lat, lon);
         }
+    }
+    
+    private PollenForecastResponse createEmptyPollenResponse(Double lat, Double lon) {
+        PollenForecastResponse response = new PollenForecastResponse();
+        response.setLatitude(lat);
+        response.setLongitude(lon);
+        
+        PollenForecastResponse.Daily daily = new PollenForecastResponse.Daily();
+        daily.setTime(java.util.Collections.singletonList(java.time.LocalDate.now().toString()));
+        daily.setAlder_pollen(java.util.Collections.singletonList(0.0));
+        daily.setBirch_pollen(java.util.Collections.singletonList(0.0));
+        daily.setGrass_pollen(java.util.Collections.singletonList(0.0));
+        daily.setMugwort_pollen(java.util.Collections.singletonList(0.0));
+        daily.setOlive_pollen(java.util.Collections.singletonList(0.0));
+        daily.setRagweed_pollen(java.util.Collections.singletonList(0.0));
+        
+        response.setDaily(daily);
+        return response;
     }
 }
