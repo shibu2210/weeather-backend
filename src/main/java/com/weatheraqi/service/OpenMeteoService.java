@@ -182,4 +182,29 @@ public class OpenMeteoService {
             throw new WeatherApiException("Failed to fetch precipitation data: " + e.getMessage());
         }
     }
+    
+    public PollenForecastResponse getPollenForecast(Double lat, Double lon) {
+        try {
+            String url = UriComponentsBuilder
+                    .fromHttpUrl("https://air-quality-api.open-meteo.com/v1/air-quality")
+                    .queryParam("latitude", lat)
+                    .queryParam("longitude", lon)
+                    .queryParam("daily", "alder_pollen,birch_pollen,grass_pollen,mugwort_pollen,olive_pollen,ragweed_pollen")
+                    .queryParam("timezone", "auto")
+                    .queryParam("forecast_days", 7)
+                    .toUriString();
+            
+            log.info("Fetching pollen forecast from Open-Meteo: lat={}, lon={}", lat, lon);
+            PollenForecastResponse response = restTemplate.getForObject(url, PollenForecastResponse.class);
+            
+            if (response == null) {
+                throw new WeatherApiException("No pollen data received from Open-Meteo");
+            }
+            
+            return response;
+        } catch (Exception e) {
+            log.error("Error fetching pollen data: {}", e.getMessage());
+            throw new WeatherApiException("Failed to fetch pollen data: " + e.getMessage());
+        }
+    }
 }

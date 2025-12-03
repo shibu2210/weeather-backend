@@ -20,6 +20,7 @@ public class WeatherService {
     
     private final OpenMeteoService openMeteoService;
     private final AqicnService aqicnService;
+    private final HealthInsightsService healthInsightsService;
     
     @Cacheable(value = "currentWeather", key = "#location")
     public CurrentWeatherResponse getCurrentWeather(String location) {
@@ -449,6 +450,68 @@ public class WeatherService {
         } catch (Exception e) {
             log.error("Error fetching minutely precipitation: {}", e.getMessage());
             throw new WeatherApiException("Failed to fetch precipitation data: " + e.getMessage());
+        }
+    }
+    
+    @Cacheable(value = "pollen", key = "#location")
+    public PollenSummaryResponse getPollenForecast(String location) {
+        try {
+            log.info("Fetching pollen forecast for location: {}", location);
+            
+            Double lat, lon;
+            if (location.contains(",")) {
+                String[] parts = location.split(",");
+                lat = Double.parseDouble(parts[0].trim());
+                lon = Double.parseDouble(parts[1].trim());
+            } else {
+                GeocodingResponse geocoding = openMeteoService.searchLocation(location);
+                if (geocoding.getResults() == null || geocoding.getResults().isEmpty()) {
+                    throw new WeatherApiException("Location not found: " + location);
+                }
+                lat = geocoding.getResults().get(0).getLatitude();
+                lon = geocoding.getResults().get(0).getLongitude();
+            }
+            
+            PollenForecastResponse pollenData = openMeteoService.getPollenForecast(lat, lon);
+            return healthInsightsService.summarizePollenData(pollenData);
+        } catch (Exception e) {
+            log.error("Error fetching pollen forecast: {}", e.getMessage());
+            throw new WeatherApiException("Failed to fetch pollen data: " + e.getMessage());
+        }
+    }
+    
+    @Cacheable(value = "healthScore", key = "#location")
+    public HealthScoreResponse getHealthScore(String location) {
+        try {
+            log.info("Calculating health score for location: {}", location);
+            
+            // Fetch all required data
+            CurrentWeatherResponse weather = getCurrentWeather(location);
+            UvIndexResponse uv = getUvIndex(location);
+            PollenSummaryResponse pollen = getPollenForecast(location);
+            
+            return healthInsightsService.calculateHealthScore(weather, uv, pollen);
+        } catch (Exception e) {
+            log.error("Error calculating health score: {}", e.getMessage());
+            throw new WeatherApiException("Failed to calculate health score: " + e.getMessage());
+        }
+    }
+    
+    @Cacheable(value = "insights", key = "#location")
+    public WeatherInsightsResponse getWeatherInsights(String location) {
+        try {
+            log.info("Generating weather insights for location: {}", location);
+            
+            // Fetch all required data
+            CurrentWeatherResponse weather = getCurrentWeather(location);
+            HealthScoreResponse healthScore = getHealthScore(location);
+            UvIndexResponse uv = getUvIndex(location);
+            PollenSummaryResponse pollen = getPollenForecast(location);
+            
+            return healthInsightsService.generateInsights(weather, healthScore, uv, pollen);
+        } catch (Exception e) {
+            log.error("Error generating insights: {}", e.getMessage());
+            throw new WeatherApiException("Failed to generate insights: " + e.getMessage());
         }
     }
 }

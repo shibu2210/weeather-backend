@@ -77,4 +77,28 @@ public class WeatherController {
         com.weatheraqi.dto.PrecipitationMinutelyResponse response = weatherService.getPrecipitationMinutely(location);
         return ResponseEntity.ok(response);
     }
+    
+    @GetMapping("/pollen")
+    public ResponseEntity<com.weatheraqi.dto.PollenSummaryResponse> getPollenForecast(
+            @RequestParam @NotBlank(message = "Location is required") String location) {
+        log.info("GET /api/weather/pollen - location: {}", location);
+        com.weatheraqi.dto.PollenSummaryResponse response = weatherService.getPollenForecast(location);
+        return ResponseEntity.ok(response);
+    }
+    
+    @GetMapping("/health-score")
+    public ResponseEntity<com.weatheraqi.dto.HealthScoreResponse> getHealthScore(
+            @RequestParam @NotBlank(message = "Location is required") String location) {
+        log.info("GET /api/weather/health-score - location: {}", location);
+        com.weatheraqi.dto.HealthScoreResponse response = weatherService.getHealthScore(location);
+        return ResponseEntity.ok(response);
+    }
+    
+    @GetMapping("/insights")
+    public ResponseEntity<com.weatheraqi.dto.WeatherInsightsResponse> getWeatherInsights(
+            @RequestParam @NotBlank(message = "Location is required") String location) {
+        log.info("GET /api/weather/insights - location: {}", location);
+        com.weatheraqi.dto.WeatherInsightsResponse response = weatherService.getWeatherInsights(location);
+        return ResponseEntity.ok(response);
+    }
 }
