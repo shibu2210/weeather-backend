@@ -266,20 +266,32 @@ public class WeatherService {
                 day.setDate(om.getDaily().getTime().get(i));
                 day.setDateEpoch(0L); // Not provided by Open-Meteo
                 
-                // Day data
+                // Day data with null safety
                 ForecastResponse.Day dayData = new ForecastResponse.Day();
-                dayData.setMaxTempC(om.getDaily().getTemperature_2m_max().get(i));
-                dayData.setMaxTempF(celsiusToFahrenheit(om.getDaily().getTemperature_2m_max().get(i)));
-                dayData.setMinTempC(om.getDaily().getTemperature_2m_min().get(i));
-                dayData.setMinTempF(celsiusToFahrenheit(om.getDaily().getTemperature_2m_min().get(i)));
-                dayData.setAvgTempC((om.getDaily().getTemperature_2m_max().get(i) + om.getDaily().getTemperature_2m_min().get(i)) / 2);
+                
+                Double maxTemp = getValueOrDefault(om.getDaily().getTemperature_2m_max(), i, 0.0);
+                Double minTemp = getValueOrDefault(om.getDaily().getTemperature_2m_min(), i, 0.0);
+                
+                dayData.setMaxTempC(maxTemp);
+                dayData.setMaxTempF(celsiusToFahrenheit(maxTemp));
+                dayData.setMinTempC(minTemp);
+                dayData.setMinTempF(celsiusToFahrenheit(minTemp));
+                dayData.setAvgTempC((maxTemp + minTemp) / 2);
                 dayData.setAvgTempF(celsiusToFahrenheit(dayData.getAvgTempC()));
-                dayData.setMaxWindKph(om.getDaily().getWind_speed_10m_max().get(i));
-                dayData.setMaxWindMph(kmhToMph(om.getDaily().getWind_speed_10m_max().get(i)));
-                dayData.setTotalPrecipMm(om.getDaily().getPrecipitation_sum().get(i));
-                dayData.setTotalPrecipIn(mmToInches(om.getDaily().getPrecipitation_sum().get(i)));
-                dayData.setDailyChanceOfRain(om.getDaily().getPrecipitation_probability_max().get(i));
-                dayData.setUv(om.getDaily().getUv_index_max().get(i));
+                
+                Double maxWind = getValueOrDefault(om.getDaily().getWind_speed_10m_max(), i, 0.0);
+                dayData.setMaxWindKph(maxWind);
+                dayData.setMaxWindMph(kmhToMph(maxWind));
+                
+                Double precip = getValueOrDefault(om.getDaily().getPrecipitation_sum(), i, 0.0);
+                dayData.setTotalPrecipMm(precip);
+                dayData.setTotalPrecipIn(mmToInches(precip));
+                
+                Integer rainChance = getIntValueOrDefault(om.getDaily().getPrecipitation_probability_max(), i, 0);
+                dayData.setDailyChanceOfRain(rainChance);
+                
+                Double uv = getValueOrDefault(om.getDaily().getUv_index_max(), i, 0.0);
+                dayData.setUv(uv);
                 
                 CurrentWeatherResponse.Condition dayCondition = new CurrentWeatherResponse.Condition();
                 dayCondition.setText(OpenMeteoService.getWeatherDescription(om.getDaily().getWeather_code().get(i)));
@@ -322,31 +334,45 @@ public class WeatherService {
                 ForecastResponse.Hour hour = new ForecastResponse.Hour();
                 hour.setTime(hourTime);
                 hour.setTimeEpoch(0L);
-                hour.setTempC(om.getHourly().getTemperature_2m().get(i));
-                hour.setTempF(celsiusToFahrenheit(om.getHourly().getTemperature_2m().get(i)));
-                hour.setIsDay(om.getHourly().getIs_day().get(i));
                 
+                Double tempC = getValueOrDefault(om.getHourly().getTemperature_2m(), i, 0.0);
+                hour.setTempC(tempC);
+                hour.setTempF(celsiusToFahrenheit(tempC));
+                hour.setIsDay(getIntValueOrDefault(om.getHourly().getIs_day(), i, 1));
+                
+                Integer weatherCode = getIntValueOrDefault(om.getHourly().getWeather_code(), i, 0);
                 CurrentWeatherResponse.Condition condition = new CurrentWeatherResponse.Condition();
-                condition.setText(OpenMeteoService.getWeatherDescription(om.getHourly().getWeather_code().get(i)));
+                condition.setText(OpenMeteoService.getWeatherDescription(weatherCode));
                 condition.setIcon("//cdn.weatherapi.com/weather/64x64/day/" + 
-                                 OpenMeteoService.getWeatherIconCode(om.getHourly().getWeather_code().get(i), 
-                                                                     om.getHourly().getIs_day().get(i)) + ".png");
-                condition.setCode(om.getHourly().getWeather_code().get(i));
+                                 OpenMeteoService.getWeatherIconCode(weatherCode, hour.getIsDay()) + ".png");
+                condition.setCode(weatherCode);
                 hour.setCondition(condition);
                 
-                hour.setWindKph(om.getHourly().getWind_speed_10m().get(i));
-                hour.setWindMph(kmhToMph(om.getHourly().getWind_speed_10m().get(i)));
-                hour.setWindDegree(om.getHourly().getWind_direction_10m().get(i));
-                hour.setWindDir(OpenMeteoService.getWindDirection(om.getHourly().getWind_direction_10m().get(i)));
-                hour.setPrecipMm(om.getHourly().getPrecipitation().get(i));
-                hour.setPrecipIn(mmToInches(om.getHourly().getPrecipitation().get(i)));
-                hour.setHumidity(om.getHourly().getRelative_humidity_2m().get(i));
-                hour.setFeelsLikeC(om.getHourly().getApparent_temperature().get(i));
-                hour.setFeelsLikeF(celsiusToFahrenheit(om.getHourly().getApparent_temperature().get(i)));
-                hour.setChanceOfRain(om.getHourly().getPrecipitation_probability().get(i));
-                hour.setVisKm(om.getHourly().getVisibility().get(i) / 1000.0);
-                hour.setVisMiles(hour.getVisKm() * 0.621371);
-                hour.setUv(om.getHourly().getUv_index().get(i));
+                Double windKph = getValueOrDefault(om.getHourly().getWind_speed_10m(), i, 0.0);
+                hour.setWindKph(windKph);
+                hour.setWindMph(kmhToMph(windKph));
+                
+                Integer windDeg = getIntValueOrDefault(om.getHourly().getWind_direction_10m(), i, 0);
+                hour.setWindDegree(windDeg);
+                hour.setWindDir(OpenMeteoService.getWindDirection(windDeg));
+                
+                Double precipMm = getValueOrDefault(om.getHourly().getPrecipitation(), i, 0.0);
+                hour.setPrecipMm(precipMm);
+                hour.setPrecipIn(mmToInches(precipMm));
+                
+                hour.setHumidity(getIntValueOrDefault(om.getHourly().getRelative_humidity_2m(), i, 0));
+                
+                Double feelsLike = getValueOrDefault(om.getHourly().getApparent_temperature(), i, tempC);
+                hour.setFeelsLikeC(feelsLike);
+                hour.setFeelsLikeF(celsiusToFahrenheit(feelsLike));
+                
+                hour.setChanceOfRain(getIntValueOrDefault(om.getHourly().getPrecipitation_probability(), i, 0));
+                
+                Double visKm = getValueOrDefault(om.getHourly().getVisibility(), i, 10000.0) / 1000.0;
+                hour.setVisKm(visKm);
+                hour.setVisMiles(visKm * 0.621371);
+                
+                hour.setUv(getValueOrDefault(om.getHourly().getUv_index(), i, 0.0));
                 
                 hours.add(hour);
             }
@@ -370,6 +396,23 @@ public class WeatherService {
     
     private Double mmToInches(Double mm) {
         return mm != null ? mm * 0.0393701 : null;
+    }
+    
+    // Null-safe helper methods
+    private Double getValueOrDefault(List<Double> list, int index, Double defaultValue) {
+        if (list == null || index >= list.size()) {
+            return defaultValue;
+        }
+        Double value = list.get(index);
+        return value != null ? value : defaultValue;
+    }
+    
+    private Integer getIntValueOrDefault(List<Integer> list, int index, Integer defaultValue) {
+        if (list == null || index >= list.size()) {
+            return defaultValue;
+        }
+        Integer value = list.get(index);
+        return value != null ? value : defaultValue;
     }
     
     @Cacheable(value = "uvIndex", key = "#location")
