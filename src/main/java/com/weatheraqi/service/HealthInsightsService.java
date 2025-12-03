@@ -281,27 +281,19 @@ public class HealthInsightsService {
     }
     
     private String generateBriefing(CurrentWeatherResponse weather, HealthScoreResponse healthScore) {
-        String greeting = getGreeting();
         String condition = weather.getCurrent().getCondition().getText();
         int score = healthScore.getScore();
         
         if (score >= 80) {
-            return String.format("%s Perfect day ahead! %s with excellent air quality. Great time for outdoor activities.", 
-                greeting, condition);
+            return String.format("Perfect conditions today! %s with excellent air quality. Great time for outdoor activities.", 
+                condition);
         } else if (score >= 60) {
-            return String.format("%s %s today. Conditions are generally good with some minor concerns.", 
-                greeting, condition);
+            return String.format("%s today. Conditions are generally good with some minor concerns.", 
+                condition);
         } else {
-            return String.format("%s %s today. Consider limiting outdoor exposure due to health factors.", 
-                greeting, condition);
+            return String.format("%s today. Consider limiting outdoor exposure due to health factors.", 
+                condition);
         }
-    }
-    
-    private String getGreeting() {
-        int hour = java.time.LocalTime.now().getHour();
-        if (hour < 12) return "Good morning!";
-        if (hour < 18) return "Good afternoon!";
-        return "Good evening!";
     }
     
     private WeatherInsightsResponse.ActivityRecommendation createActivity(
