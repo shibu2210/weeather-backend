@@ -191,9 +191,9 @@ public class OpenMeteoService {
                     .fromHttpUrl("https://air-quality-api.open-meteo.com/v1/air-quality")
                     .queryParam("latitude", lat)
                     .queryParam("longitude", lon)
-                    .queryParam("daily", "alder_pollen,birch_pollen,grass_pollen,mugwort_pollen,olive_pollen,ragweed_pollen")
+                    .queryParam("hourly", "alder_pollen,birch_pollen,grass_pollen,mugwort_pollen,olive_pollen,ragweed_pollen")
                     .queryParam("timezone", "auto")
-                    .queryParam("forecast_days", 1)
+                    .queryParam("forecast_hours", 24)
                     .toUriString();
             
             log.info("Fetching pollen forecast from Open-Meteo: lat={}, lon={}", lat, lon);
@@ -201,16 +201,19 @@ public class OpenMeteoService {
             try {
                 PollenForecastResponse response = restTemplate.getForObject(url, PollenForecastResponse.class);
                 
-                if (response == null || response.getDaily() == null) {
+                if (response == null || response.getHourly() == null) {
                     log.warn("No pollen data received, returning unavailable response");
                     return createUnavailablePollenResponse(lat, lon);
                 }
                 
                 // Check if all pollen values are null (non-European location)
-                if (isPollenDataAllNull(response.getDaily())) {
+                if (isPollenDataAllNull(response.getHourly())) {
                     log.info("Pollen data all null - location likely outside Europe");
                     return createUnavailablePollenResponse(lat, lon);
                 }
+                
+                // Convert hourly to daily format for backward compatibility
+                convertHourlyToDaily(response);
                 
                 return response;
             } catch (Exception apiError) {
@@ -223,14 +226,41 @@ public class OpenMeteoService {
         }
     }
     
-    private boolean isPollenDataAllNull(PollenForecastResponse.Daily daily) {
+    private void convertHourlyToDaily(PollenForecastResponse response) {
+        if (response.getHourly() == null) return;
+        
+        PollenForecastResponse.Daily daily = new PollenForecastResponse.Daily();
+        PollenForecastResponse.Hourly hourly = response.getHourly();
+        
+        // Get the first non-null value from hourly data (or average of first 24 hours)
+        daily.setTime(java.util.Collections.singletonList(java.time.LocalDate.now().toString()));
+        daily.setAlder_pollen(java.util.Collections.singletonList(getFirstNonNullOrZero(hourly.getAlder_pollen())));
+        daily.setBirch_pollen(java.util.Collections.singletonList(getFirstNonNullOrZero(hourly.getBirch_pollen())));
+        daily.setGrass_pollen(java.util.Collections.singletonList(getFirstNonNullOrZero(hourly.getGrass_pollen())));
+        daily.setMugwort_pollen(java.util.Collections.singletonList(getFirstNonNullOrZero(hourly.getMugwort_pollen())));
+        daily.setOlive_pollen(java.util.Collections.singletonList(getFirstNonNullOrZero(hourly.getOlive_pollen())));
+        daily.setRagweed_pollen(java.util.Collections.singletonList(getFirstNonNullOrZero(hourly.getRagweed_pollen())));
+        
+        response.setDaily(daily);
+    }
+    
+    private Double getFirstNonNullOrZero(List<Double> list) {
+        if (list == null || list.isEmpty()) return 0.0;
+        // Get max value from first 24 hours (or available data)
+        return list.stream()
+                .filter(v -> v != null)
+                .max(Double::compareTo)
+                .orElse(0.0);
+    }
+    
+    private boolean isPollenDataAllNull(PollenForecastResponse.Hourly hourly) {
         // Check if all pollen values are null (indicates non-European location)
-        return isListAllNull(daily.getAlder_pollen()) &&
-               isListAllNull(daily.getBirch_pollen()) &&
-               isListAllNull(daily.getGrass_pollen()) &&
-               isListAllNull(daily.getMugwort_pollen()) &&
-               isListAllNull(daily.getOlive_pollen()) &&
-               isListAllNull(daily.getRagweed_pollen());
+        return isListAllNull(hourly.getAlder_pollen()) &&
+               isListAllNull(hourly.getBirch_pollen()) &&
+               isListAllNull(hourly.getGrass_pollen()) &&
+               isListAllNull(hourly.getMugwort_pollen()) &&
+               isListAllNull(hourly.getOlive_pollen()) &&
+               isListAllNull(hourly.getRagweed_pollen());
     }
     
     private boolean isListAllNull(List<Double> list) {

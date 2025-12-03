@@ -13,12 +13,15 @@ public class PollenForecastResponse {
     @JsonProperty("utc_offset_seconds")
     private Integer utcOffsetSeconds;
     private String timezone;
-    @JsonProperty("daily_units")
-    private DailyUnits dailyUnits;
+    @JsonProperty("hourly_units")
+    private HourlyUnits hourlyUnits;
+    private Hourly hourly;
+    
+    // Keep daily for backward compatibility
     private Daily daily;
     
     @Data
-    public static class DailyUnits {
+    public static class HourlyUnits {
         private String time;
         private String alder_pollen;
         private String birch_pollen;
@@ -26,6 +29,17 @@ public class PollenForecastResponse {
         private String mugwort_pollen;
         private String olive_pollen;
         private String ragweed_pollen;
+    }
+    
+    @Data
+    public static class Hourly {
+        private List<String> time;
+        private List<Double> alder_pollen;
+        private List<Double> birch_pollen;
+        private List<Double> grass_pollen;
+        private List<Double> mugwort_pollen;
+        private List<Double> olive_pollen;
+        private List<Double> ragweed_pollen;
     }
     
     @Data
