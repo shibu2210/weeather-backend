@@ -1,49 +1,63 @@
 package com.weatheraqi.service;
 
-import com.weatheraqi.config.WeatherApiConfig;
-import com.weatheraqi.dto.AqiDetailsResponse;
-import com.weatheraqi.dto.CurrentWeatherResponse;
-import com.weatheraqi.dto.ForecastResponse;
-import com.weatheraqi.dto.LocationSearchResponse;
+import com.weatheraqi.dto.*;
 import com.weatheraqi.exception.WeatherApiException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
-import org.springframework.web.util.UriComponentsBuilder;
+
+import java.time.LocalDateTime;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class WeatherService {
     
-    private final RestTemplate restTemplate;
-    private final WeatherApiConfig weatherApiConfig;
+    private final OpenMeteoService openMeteoService;
     private final AqicnService aqicnService;
     
     @Cacheable(value = "currentWeather", key = "#location")
     public CurrentWeatherResponse getCurrentWeather(String location) {
         try {
-            String url = UriComponentsBuilder
-                    .fromHttpUrl(weatherApiConfig.getBaseUrl() + "/current.json")
-                    .queryParam("key", weatherApiConfig.getApiKey())
-                    .queryParam("q", location)
-                    .queryParam("aqi", "no")
-                    .toUriString();
-            
             log.info("Fetching current weather for location: {}", location);
-            CurrentWeatherResponse response = restTemplate.getForObject(url, CurrentWeatherResponse.class);
             
-            if (response == null) {
-                throw new WeatherApiException("No data received from Weather API");
+            // Parse location - could be "city name" or "lat,lon"
+            Double lat, lon;
+            String locationName;
+            
+            if (location.contains(",")) {
+                String[] parts = location.split(",");
+                lat = Double.parseDouble(parts[0].trim());
+                lon = Double.parseDouble(parts[1].trim());
+                locationName = "Location";
+            } else {
+                // Search for location first
+                GeocodingResponse geocoding = openMeteoService.searchLocation(location);
+                if (geocoding.getResults() == null || geocoding.getResults().isEmpty()) {
+                    throw new WeatherApiException("Location not found: " + location);
+                }
+                GeocodingResponse.Result firstResult = geocoding.getResults().get(0);
+                lat = firstResult.getLatitude();
+                lon = firstResult.getLongitude();
+                locationName = firstResult.getName();
             }
+            
+            // Fetch weather data
+            OpenMeteoResponse omResponse = openMeteoService.getWeatherData(lat, lon, 1);
+            
+            // Transform to CurrentWeatherResponse
+            CurrentWeatherResponse response = transformToCurrentWeather(omResponse, locationName);
             
             // Merge AQICN data
             try {
                 mergeAqicnData(response);
             } catch (Exception e) {
-                log.warn("Failed to fetch AQICN data, using WeatherAPI AQI: {}", e.getMessage());
+                log.warn("Failed to fetch AQICN data: {}", e.getMessage());
             }
             
             return response;
@@ -111,27 +125,39 @@ public class WeatherService {
     public ForecastResponse getForecast(String location, Integer days) {
         try {
             if (days == null || days < 1) {
-                days = 3;
+                days = 7;
             }
-            if (days > 10) {
-                days = 10;
+            if (days > 16) {
+                days = 16;
             }
-            
-            String url = UriComponentsBuilder
-                    .fromHttpUrl(weatherApiConfig.getBaseUrl() + "/forecast.json")
-                    .queryParam("key", weatherApiConfig.getApiKey())
-                    .queryParam("q", location)
-                    .queryParam("days", days)
-                    .queryParam("aqi", "no")
-                    .queryParam("alerts", "no")
-                    .toUriString();
             
             log.info("Fetching forecast for location: {}, days: {}", location, days);
-            ForecastResponse response = restTemplate.getForObject(url, ForecastResponse.class);
             
-            if (response == null) {
-                throw new WeatherApiException("No forecast data received from Weather API");
+            // Parse location
+            Double lat, lon;
+            String locationName;
+            
+            if (location.contains(",")) {
+                String[] parts = location.split(",");
+                lat = Double.parseDouble(parts[0].trim());
+                lon = Double.parseDouble(parts[1].trim());
+                locationName = "Location";
+            } else {
+                GeocodingResponse geocoding = openMeteoService.searchLocation(location);
+                if (geocoding.getResults() == null || geocoding.getResults().isEmpty()) {
+                    throw new WeatherApiException("Location not found: " + location);
+                }
+                GeocodingResponse.Result firstResult = geocoding.getResults().get(0);
+                lat = firstResult.getLatitude();
+                lon = firstResult.getLongitude();
+                locationName = firstResult.getName();
             }
+            
+            // Fetch weather data
+            OpenMeteoResponse omResponse = openMeteoService.getWeatherData(lat, lon, days);
+            
+            // Transform to ForecastResponse
+            ForecastResponse response = transformToForecast(omResponse, locationName);
             
             return response;
         } catch (Exception e) {
@@ -143,19 +169,205 @@ public class WeatherService {
     @Cacheable(value = "locationSearch", key = "#query")
     public LocationSearchResponse[] searchLocation(String query) {
         try {
-            String url = UriComponentsBuilder
-                    .fromHttpUrl(weatherApiConfig.getBaseUrl() + "/search.json")
-                    .queryParam("key", weatherApiConfig.getApiKey())
-                    .queryParam("q", query)
-                    .toUriString();
-            
             log.info("Searching locations for query: {}", query);
-            LocationSearchResponse[] response = restTemplate.getForObject(url, LocationSearchResponse[].class);
+            GeocodingResponse geocoding = openMeteoService.searchLocation(query);
             
-            return response != null ? response : new LocationSearchResponse[0];
+            if (geocoding.getResults() == null || geocoding.getResults().isEmpty()) {
+                return new LocationSearchResponse[0];
+            }
+            
+            // Transform to LocationSearchResponse array
+            return geocoding.getResults().stream()
+                    .map(this::transformToLocationSearch)
+                    .toArray(LocationSearchResponse[]::new);
         } catch (Exception e) {
             log.error("Error searching locations: {}", e.getMessage());
             throw new WeatherApiException("Failed to search locations: " + e.getMessage());
         }
+    }
+    
+    private LocationSearchResponse transformToLocationSearch(GeocodingResponse.Result result) {
+        LocationSearchResponse response = new LocationSearchResponse();
+        response.setId(result.getId());
+        response.setName(result.getName());
+        response.setRegion(result.getAdmin1() != null ? result.getAdmin1() : "");
+        response.setCountry(result.getCountry() != null ? result.getCountry() : "");
+        response.setLat(result.getLatitude());
+        response.setLon(result.getLongitude());
+        response.setUrl("");
+        return response;
+    }
+    
+    private CurrentWeatherResponse transformToCurrentWeather(OpenMeteoResponse om, String locationName) {
+        CurrentWeatherResponse response = new CurrentWeatherResponse();
+        
+        // Location
+        CurrentWeatherResponse.Location location = new CurrentWeatherResponse.Location();
+        location.setName(locationName);
+        location.setRegion("");
+        location.setCountry("");
+        location.setLat(om.getLatitude());
+        location.setLon(om.getLongitude());
+        location.setTzId(om.getTimezone());
+        location.setLocalTime(om.getCurrent().getTime());
+        response.setLocation(location);
+        
+        // Current weather
+        CurrentWeatherResponse.Current current = new CurrentWeatherResponse.Current();
+        current.setLastUpdated(om.getCurrent().getTime());
+        current.setTempC(om.getCurrent().getTemperature_2m());
+        current.setTempF(celsiusToFahrenheit(om.getCurrent().getTemperature_2m()));
+        current.setIsDay(om.getCurrent().getIs_day());
+        
+        // Condition
+        CurrentWeatherResponse.Condition condition = new CurrentWeatherResponse.Condition();
+        condition.setText(OpenMeteoService.getWeatherDescription(om.getCurrent().getWeather_code()));
+        condition.setIcon("//cdn.weatherapi.com/weather/64x64/day/" + 
+                         OpenMeteoService.getWeatherIconCode(om.getCurrent().getWeather_code(), om.getCurrent().getIs_day()) + ".png");
+        condition.setCode(om.getCurrent().getWeather_code());
+        current.setCondition(condition);
+        
+        current.setWindKph(om.getCurrent().getWind_speed_10m());
+        current.setWindMph(kmhToMph(om.getCurrent().getWind_speed_10m()));
+        current.setWindDegree(om.getCurrent().getWind_direction_10m());
+        current.setWindDir(OpenMeteoService.getWindDirection(om.getCurrent().getWind_direction_10m()));
+        current.setPressureMb(om.getCurrent().getPressure_msl());
+        current.setPressureIn(mbToInHg(om.getCurrent().getPressure_msl()));
+        current.setPrecipMm(om.getCurrent().getPrecipitation());
+        current.setPrecipIn(mmToInches(om.getCurrent().getPrecipitation()));
+        current.setHumidity(om.getCurrent().getRelative_humidity_2m());
+        current.setCloud(om.getCurrent().getCloud_cover());
+        current.setFeelsLikeC(om.getCurrent().getApparent_temperature());
+        current.setFeelsLikeF(celsiusToFahrenheit(om.getCurrent().getApparent_temperature()));
+        current.setGustKph(om.getCurrent().getWind_gusts_10m());
+        current.setGustMph(kmhToMph(om.getCurrent().getWind_gusts_10m()));
+        
+        response.setCurrent(current);
+        
+        return response;
+    }
+    
+    private ForecastResponse transformToForecast(OpenMeteoResponse om, String locationName) {
+        ForecastResponse response = new ForecastResponse();
+        
+        // Location and current (reuse transformation)
+        CurrentWeatherResponse currentResponse = transformToCurrentWeather(om, locationName);
+        response.setLocation(currentResponse.getLocation());
+        response.setCurrent(currentResponse.getCurrent());
+        
+        // Forecast
+        ForecastResponse.Forecast forecast = new ForecastResponse.Forecast();
+        List<ForecastResponse.ForecastDay> forecastDays = new ArrayList<>();
+        
+        if (om.getDaily() != null && om.getDaily().getTime() != null) {
+            for (int i = 0; i < om.getDaily().getTime().size(); i++) {
+                ForecastResponse.ForecastDay day = new ForecastResponse.ForecastDay();
+                day.setDate(om.getDaily().getTime().get(i));
+                day.setDateEpoch(0L); // Not provided by Open-Meteo
+                
+                // Day data
+                ForecastResponse.Day dayData = new ForecastResponse.Day();
+                dayData.setMaxTempC(om.getDaily().getTemperature_2m_max().get(i));
+                dayData.setMaxTempF(celsiusToFahrenheit(om.getDaily().getTemperature_2m_max().get(i)));
+                dayData.setMinTempC(om.getDaily().getTemperature_2m_min().get(i));
+                dayData.setMinTempF(celsiusToFahrenheit(om.getDaily().getTemperature_2m_min().get(i)));
+                dayData.setAvgTempC((om.getDaily().getTemperature_2m_max().get(i) + om.getDaily().getTemperature_2m_min().get(i)) / 2);
+                dayData.setAvgTempF(celsiusToFahrenheit(dayData.getAvgTempC()));
+                dayData.setMaxWindKph(om.getDaily().getWind_speed_10m_max().get(i));
+                dayData.setMaxWindMph(kmhToMph(om.getDaily().getWind_speed_10m_max().get(i)));
+                dayData.setTotalPrecipMm(om.getDaily().getPrecipitation_sum().get(i));
+                dayData.setTotalPrecipIn(mmToInches(om.getDaily().getPrecipitation_sum().get(i)));
+                dayData.setDailyChanceOfRain(om.getDaily().getPrecipitation_probability_max().get(i));
+                dayData.setUv(om.getDaily().getUv_index_max().get(i));
+                
+                CurrentWeatherResponse.Condition dayCondition = new CurrentWeatherResponse.Condition();
+                dayCondition.setText(OpenMeteoService.getWeatherDescription(om.getDaily().getWeather_code().get(i)));
+                dayCondition.setIcon("//cdn.weatherapi.com/weather/64x64/day/" + 
+                                    OpenMeteoService.getWeatherIconCode(om.getDaily().getWeather_code().get(i), 1) + ".png");
+                dayCondition.setCode(om.getDaily().getWeather_code().get(i));
+                dayData.setCondition(dayCondition);
+                
+                day.setDay(dayData);
+                
+                // Astro data
+                ForecastResponse.Astro astro = new ForecastResponse.Astro();
+                astro.setSunrise(om.getDaily().getSunrise().get(i).substring(11)); // Extract time
+                astro.setSunset(om.getDaily().getSunset().get(i).substring(11));
+                day.setAstro(astro);
+                
+                // Hourly data for this day
+                day.setHour(extractHourlyForDay(om, om.getDaily().getTime().get(i)));
+                
+                forecastDays.add(day);
+            }
+        }
+        
+        forecast.setForecastDay(forecastDays);
+        response.setForecast(forecast);
+        
+        return response;
+    }
+    
+    private List<ForecastResponse.Hour> extractHourlyForDay(OpenMeteoResponse om, String date) {
+        List<ForecastResponse.Hour> hours = new ArrayList<>();
+        
+        if (om.getHourly() == null || om.getHourly().getTime() == null) {
+            return hours;
+        }
+        
+        for (int i = 0; i < om.getHourly().getTime().size(); i++) {
+            String hourTime = om.getHourly().getTime().get(i);
+            if (hourTime.startsWith(date)) {
+                ForecastResponse.Hour hour = new ForecastResponse.Hour();
+                hour.setTime(hourTime);
+                hour.setTimeEpoch(0L);
+                hour.setTempC(om.getHourly().getTemperature_2m().get(i));
+                hour.setTempF(celsiusToFahrenheit(om.getHourly().getTemperature_2m().get(i)));
+                hour.setIsDay(om.getHourly().getIs_day().get(i));
+                
+                CurrentWeatherResponse.Condition condition = new CurrentWeatherResponse.Condition();
+                condition.setText(OpenMeteoService.getWeatherDescription(om.getHourly().getWeather_code().get(i)));
+                condition.setIcon("//cdn.weatherapi.com/weather/64x64/day/" + 
+                                 OpenMeteoService.getWeatherIconCode(om.getHourly().getWeather_code().get(i), 
+                                                                     om.getHourly().getIs_day().get(i)) + ".png");
+                condition.setCode(om.getHourly().getWeather_code().get(i));
+                hour.setCondition(condition);
+                
+                hour.setWindKph(om.getHourly().getWind_speed_10m().get(i));
+                hour.setWindMph(kmhToMph(om.getHourly().getWind_speed_10m().get(i)));
+                hour.setWindDegree(om.getHourly().getWind_direction_10m().get(i));
+                hour.setWindDir(OpenMeteoService.getWindDirection(om.getHourly().getWind_direction_10m().get(i)));
+                hour.setPrecipMm(om.getHourly().getPrecipitation().get(i));
+                hour.setPrecipIn(mmToInches(om.getHourly().getPrecipitation().get(i)));
+                hour.setHumidity(om.getHourly().getRelative_humidity_2m().get(i));
+                hour.setFeelsLikeC(om.getHourly().getApparent_temperature().get(i));
+                hour.setFeelsLikeF(celsiusToFahrenheit(om.getHourly().getApparent_temperature().get(i)));
+                hour.setChanceOfRain(om.getHourly().getPrecipitation_probability().get(i));
+                hour.setVisKm(om.getHourly().getVisibility().get(i) / 1000.0);
+                hour.setVisMiles(hour.getVisKm() * 0.621371);
+                hour.setUv(om.getHourly().getUv_index().get(i));
+                
+                hours.add(hour);
+            }
+        }
+        
+        return hours;
+    }
+    
+    // Conversion utilities
+    private Double celsiusToFahrenheit(Double celsius) {
+        return celsius != null ? (celsius * 9.0 / 5.0) + 32.0 : null;
+    }
+    
+    private Double kmhToMph(Double kmh) {
+        return kmh != null ? kmh * 0.621371 : null;
+    }
+    
+    private Double mbToInHg(Double mb) {
+        return mb != null ? mb * 0.02953 : null;
+    }
+    
+    private Double mmToInches(Double mm) {
+        return mm != null ? mm * 0.0393701 : null;
     }
 }
