@@ -131,13 +131,33 @@ public class HealthInsightsService {
         Integer aqi = weather.getCurrent().getAirQuality().getAqi();
         if (aqi == null) return 100;
         
-        // Convert AQI to score (inverse relationship)
-        if (aqi <= 50) return 100;
-        if (aqi <= 100) return 80;
-        if (aqi <= 150) return 60;
-        if (aqi <= 200) return 40;
-        if (aqi <= 300) return 20;
-        return 0;
+        // Convert AQI to score (inverse relationship) - more strict for health
+        // AQI 0-50 (Good) = 100-90
+        // AQI 51-100 (Moderate) = 89-70
+        // AQI 101-150 (Unhealthy for Sensitive) = 69-40
+        // AQI 151-200 (Unhealthy) = 39-20
+        // AQI 201-300 (Very Unhealthy) = 19-5
+        // AQI 301+ (Hazardous) = 0-4
+        
+        if (aqi <= 50) {
+            // Good: 100-90
+            return 100 - (int)((aqi / 50.0) * 10);
+        } else if (aqi <= 100) {
+            // Moderate: 89-70
+            return 89 - (int)(((aqi - 51) / 49.0) * 19);
+        } else if (aqi <= 150) {
+            // Unhealthy for Sensitive: 69-40
+            return 69 - (int)(((aqi - 101) / 49.0) * 29);
+        } else if (aqi <= 200) {
+            // Unhealthy: 39-20
+            return 39 - (int)(((aqi - 151) / 49.0) * 19);
+        } else if (aqi <= 300) {
+            // Very Unhealthy: 19-5
+            return 19 - (int)(((aqi - 201) / 99.0) * 14);
+        } else {
+            // Hazardous: 0-4
+            return Math.max(0, 4 - (int)((aqi - 301) / 100.0));
+        }
     }
     
     private int calculateUvScore(UvIndexResponse uv) {
@@ -265,6 +285,19 @@ public class HealthInsightsService {
         insights.setActivities(activities);
         
         // Alerts
+        // Check AQI specifically
+        Integer aqi = weather.getCurrent().getAirQuality() != null ? 
+                     weather.getCurrent().getAirQuality().getAqi() : null;
+        if (aqi != null) {
+            if (aqi > 200) {
+                alerts.add(createAlert("warning", "Very unhealthy air quality - avoid outdoor activities", "🚨"));
+            } else if (aqi > 150) {
+                alerts.add(createAlert("warning", "Unhealthy air quality - limit outdoor exposure", "⚠️"));
+            } else if (aqi > 100) {
+                alerts.add(createAlert("info", "Moderate air quality - sensitive groups should limit prolonged outdoor exertion", "💨"));
+            }
+        }
+        
         if (healthScore.getScore() < 40) {
             alerts.add(createAlert("warning", "Poor outdoor conditions detected", "⚠️"));
         }
