@@ -157,4 +157,29 @@ public class OpenMeteoService {
         int index = (int) Math.round(((degrees % 360) / 22.5));
         return directions[index % 16];
     }
+    
+    public PrecipitationMinutelyResponse getPrecipitationMinutely(Double lat, Double lon) {
+        try {
+            String url = UriComponentsBuilder
+                    .fromHttpUrl(config.getBaseUrl() + "/forecast")
+                    .queryParam("latitude", lat)
+                    .queryParam("longitude", lon)
+                    .queryParam("minutely_15", "precipitation")
+                    .queryParam("forecast_days", 1)
+                    .queryParam("timezone", "auto")
+                    .toUriString();
+            
+            log.info("Fetching minutely precipitation from Open-Meteo: lat={}, lon={}", lat, lon);
+            PrecipitationMinutelyResponse response = restTemplate.getForObject(url, PrecipitationMinutelyResponse.class);
+            
+            if (response == null) {
+                throw new WeatherApiException("No precipitation data received from Open-Meteo");
+            }
+            
+            return response;
+        } catch (Exception e) {
+            log.error("Error fetching precipitation data: {}", e.getMessage());
+            throw new WeatherApiException("Failed to fetch precipitation data: " + e.getMessage());
+        }
+    }
 }

@@ -61,4 +61,20 @@ public class WeatherController {
     public ResponseEntity<String> health() {
         return ResponseEntity.ok("Weather API is running");
     }
+    
+    @GetMapping("/uv-index")
+    public ResponseEntity<com.weatheraqi.dto.UvIndexResponse> getUvIndex(
+            @RequestParam @NotBlank(message = "Location is required") String location) {
+        log.info("GET /api/weather/uv-index - location: {}", location);
+        com.weatheraqi.dto.UvIndexResponse response = weatherService.getUvIndex(location);
+        return ResponseEntity.ok(response);
+    }
+    
+    @GetMapping("/precipitation-minutely")
+    public ResponseEntity<com.weatheraqi.dto.PrecipitationMinutelyResponse> getPrecipitationMinutely(
+            @RequestParam @NotBlank(message = "Location is required") String location) {
+        log.info("GET /api/weather/precipitation-minutely - location: {}", location);
+        com.weatheraqi.dto.PrecipitationMinutelyResponse response = weatherService.getPrecipitationMinutely(location);
+        return ResponseEntity.ok(response);
+    }
 }

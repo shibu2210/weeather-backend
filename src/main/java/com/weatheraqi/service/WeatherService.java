@@ -370,4 +370,85 @@ public class WeatherService {
     private Double mmToInches(Double mm) {
         return mm != null ? mm * 0.0393701 : null;
     }
+    
+    @Cacheable(value = "uvIndex", key = "#location")
+    public UvIndexResponse getUvIndex(String location) {
+        try {
+            log.info("Fetching UV index for location: {}", location);
+            
+            // Parse location
+            Double lat, lon;
+            
+            if (location.contains(",")) {
+                String[] parts = location.split(",");
+                lat = Double.parseDouble(parts[0].trim());
+                lon = Double.parseDouble(parts[1].trim());
+            } else {
+                GeocodingResponse geocoding = openMeteoService.searchLocation(location);
+                if (geocoding.getResults() == null || geocoding.getResults().isEmpty()) {
+                    throw new WeatherApiException("Location not found: " + location);
+                }
+                GeocodingResponse.Result firstResult = geocoding.getResults().get(0);
+                lat = firstResult.getLatitude();
+                lon = firstResult.getLongitude();
+            }
+            
+            // Fetch weather data with UV
+            OpenMeteoResponse omResponse = openMeteoService.getWeatherData(lat, lon, 1);
+            
+            // Get current UV from hourly data (find current hour)
+            Double currentUv = 0.0;
+            if (omResponse.getHourly() != null && omResponse.getHourly().getUv_index() != null) {
+                // Get the first non-null UV value (current or next hour)
+                for (Double uv : omResponse.getHourly().getUv_index()) {
+                    if (uv != null && uv > 0) {
+                        currentUv = uv;
+                        break;
+                    }
+                }
+            }
+            
+            // Get max UV from daily data
+            Double maxUv = 0.0;
+            if (omResponse.getDaily() != null && 
+                omResponse.getDaily().getUv_index_max() != null && 
+                !omResponse.getDaily().getUv_index_max().isEmpty()) {
+                maxUv = omResponse.getDaily().getUv_index_max().get(0);
+            }
+            
+            return UvIndexResponse.fromUvValue(currentUv, maxUv);
+        } catch (Exception e) {
+            log.error("Error fetching UV index: {}", e.getMessage());
+            throw new WeatherApiException("Failed to fetch UV index: " + e.getMessage());
+        }
+    }
+    
+    @Cacheable(value = "precipitationMinutely", key = "#location")
+    public PrecipitationMinutelyResponse getPrecipitationMinutely(String location) {
+        try {
+            log.info("Fetching minutely precipitation for location: {}", location);
+            
+            // Parse location
+            Double lat, lon;
+            
+            if (location.contains(",")) {
+                String[] parts = location.split(",");
+                lat = Double.parseDouble(parts[0].trim());
+                lon = Double.parseDouble(parts[1].trim());
+            } else {
+                GeocodingResponse geocoding = openMeteoService.searchLocation(location);
+                if (geocoding.getResults() == null || geocoding.getResults().isEmpty()) {
+                    throw new WeatherApiException("Location not found: " + location);
+                }
+                GeocodingResponse.Result firstResult = geocoding.getResults().get(0);
+                lat = firstResult.getLatitude();
+                lon = firstResult.getLongitude();
+            }
+            
+            return openMeteoService.getPrecipitationMinutely(lat, lon);
+        } catch (Exception e) {
+            log.error("Error fetching minutely precipitation: {}", e.getMessage());
+            throw new WeatherApiException("Failed to fetch precipitation data: " + e.getMessage());
+        }
+    }
 }
