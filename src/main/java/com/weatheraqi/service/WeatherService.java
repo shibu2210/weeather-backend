@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
@@ -306,6 +307,13 @@ public class WeatherService {
                 ForecastResponse.Astro astro = new ForecastResponse.Astro();
                 astro.setSunrise(om.getDaily().getSunrise().get(i).substring(11)); // Extract time
                 astro.setSunset(om.getDaily().getSunset().get(i).substring(11));
+                
+                // Calculate moon phase and illumination
+                String dateStr = om.getDaily().getTime().get(i);
+                MoonPhaseInfo moonInfo = calculateMoonPhase(dateStr);
+                astro.setMoonPhase(moonInfo.phase);
+                astro.setMoonIllumination(moonInfo.illumination);
+                
                 day.setAstro(astro);
                 
                 // Hourly data for this day
@@ -555,6 +563,71 @@ public class WeatherService {
         } catch (Exception e) {
             log.error("Error generating insights: {}", e.getMessage());
             throw new WeatherApiException("Failed to generate insights: " + e.getMessage());
+        }
+    }
+    
+    // Helper class for moon phase info
+    private static class MoonPhaseInfo {
+        String phase;
+        Integer illumination;
+        
+        MoonPhaseInfo(String phase, Integer illumination) {
+            this.phase = phase;
+            this.illumination = illumination;
+        }
+    }
+    
+    /**
+     * Calculate moon phase and illumination for a given date.
+     * Uses a simplified algorithm based on the synodic month (29.53 days).
+     */
+    private MoonPhaseInfo calculateMoonPhase(String dateStr) {
+        try {
+            LocalDate date = LocalDate.parse(dateStr);
+            
+            // Known new moon date: January 6, 2000
+            LocalDate knownNewMoon = LocalDate.of(2000, 1, 6);
+            
+            // Synodic month length in days
+            double synodicMonth = 29.53058867;
+            
+            // Calculate days since known new moon
+            long daysSinceNewMoon = java.time.temporal.ChronoUnit.DAYS.between(knownNewMoon, date);
+            
+            // Calculate current position in lunar cycle (0 to 1)
+            double lunarCycle = (daysSinceNewMoon % synodicMonth) / synodicMonth;
+            if (lunarCycle < 0) lunarCycle += 1;
+            
+            // Calculate illumination percentage (0 at new moon, 100 at full moon)
+            // Using cosine function for smooth transition
+            int illumination = (int) Math.round((1 - Math.cos(lunarCycle * 2 * Math.PI)) / 2 * 100);
+            
+            // Determine moon phase name based on position in cycle
+            String phase;
+            if (lunarCycle < 0.0625) {
+                phase = "New Moon";
+            } else if (lunarCycle < 0.1875) {
+                phase = "Waxing Crescent";
+            } else if (lunarCycle < 0.3125) {
+                phase = "First Quarter";
+            } else if (lunarCycle < 0.4375) {
+                phase = "Waxing Gibbous";
+            } else if (lunarCycle < 0.5625) {
+                phase = "Full Moon";
+            } else if (lunarCycle < 0.6875) {
+                phase = "Waning Gibbous";
+            } else if (lunarCycle < 0.8125) {
+                phase = "Last Quarter";
+            } else if (lunarCycle < 0.9375) {
+                phase = "Waning Crescent";
+            } else {
+                phase = "New Moon";
+            }
+            
+            return new MoonPhaseInfo(phase, illumination);
+        } catch (Exception e) {
+            log.warn("Error calculating moon phase for date {}: {}", dateStr, e.getMessage());
+            return new MoonPhaseInfo("Unknown", 0);
         }
     }
 }
