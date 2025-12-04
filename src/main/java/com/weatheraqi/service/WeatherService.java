@@ -585,8 +585,8 @@ public class WeatherService {
         try {
             LocalDate date = LocalDate.parse(dateStr);
             
-            // Known new moon date: January 6, 2000
-            LocalDate knownNewMoon = LocalDate.of(2000, 1, 6);
+            // Known new moon date: December 1, 2024 (recent reference for better accuracy)
+            LocalDate knownNewMoon = LocalDate.of(2024, 12, 1);
             
             // Synodic month length in days
             double synodicMonth = 29.53058867;
